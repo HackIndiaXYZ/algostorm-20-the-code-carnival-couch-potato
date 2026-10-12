@@ -1,0 +1,15 @@
+{
+  "name": "device-tracker",
+  "version": "1.2.0",
+  "description": "Realtime device tracking with Node.js, Express, Socket.IO and Leaflet",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "mysql2": "^3.11.0",
+    "socket.io": "^4.7.5"
+  }
+}

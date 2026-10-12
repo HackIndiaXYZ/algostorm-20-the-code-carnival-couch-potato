@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Device Tracker</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    :root { --bg:#f6f7f4; --ink:#1c2b2d; --muted:#66767a; --line:#d9dfdc; --accent:#0f766e; --live:#e0592a; }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--ink); background: var(--bg); display: flex; }
+    aside { width: 340px; padding: 20px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 16px; overflow-y: auto; }
+    h1 { font-size: 1.25rem; margin: 0; }
+    p.hint { margin: 0; color: var(--muted); font-size: .9rem; line-height: 1.45; }
+    label { font-size: .85rem; color: var(--muted); display: block; margin-bottom: 4px; }
+    input { width: 100%; padding: 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: #fff; }
+    button { padding: 10px 14px; border: 0; border-radius: 8px; font: inherit; font-weight: 600; color: #fff; background: var(--accent); cursor: pointer; }
+    button.stop { background: var(--live); }
+    button.ghost { background: #fff; color: var(--ink); border: 1px solid var(--line); }
+    button:focus-visible, input:focus-visible { outline: 3px solid #7dd3c8; outline-offset: 2px; }
+    .row { display: flex; gap: 8px; }
+    .row input { flex: 1; }
+    #status { font-size: .85rem; color: var(--muted); min-height: 1.2em; }
+    ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+    li { padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    li small { display: block; color: var(--muted); margin-top: 2px; }
+    li.me { border-color: var(--accent); }
+    li.halted { border-color: var(--live); background: #fff4ef; }
+    li button { padding: 6px 10px; font-size: .85rem; }
+    #map { flex: 1; }
+    .dot { width: 18px; height: 18px; border-radius: 50%; background: var(--accent); border: 3px solid #fff; box-shadow: 0 0 0 2px var(--accent); }
+    .dot.me { background: var(--live); box-shadow: 0 0 0 2px var(--live); }
+    .bus { width: 30px; height: 30px; border-radius: 8px; background: #1c2b2d; color: #fff; display: grid; place-items: center; font-size: 16px; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.4); }
+    .bus.halted { background: var(--live); }
+    .bus.off { background: #b91c1c; }
+    .school { width: 40px; height: 40px; border-radius: 50%; background: #1d4ed8; color: #fff; display: grid; place-items: center; font-size: 22px; border: 4px solid #fff; box-shadow: 0 0 0 3px #1d4ed8, 0 3px 10px rgba(0,0,0,.4); }
+    .stopbadge { width: 28px; height: 28px; border-radius: 50%; background: #fff; border: 4px solid #94a3b8; color: var(--ink); font-weight: 700; font-size: .8rem; display: grid; place-items: center; box-shadow: 0 1px 4px rgba(0,0,0,.3); }
+    .stophead { display: flex; justify-content: space-between; align-items: center; gap: 10px; cursor: pointer; }
+    .studentRow { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 4px 0 4px 8px; border-top: 1px solid var(--line); font-size: .9rem; }
+    .studentRow.onboarded { color: #15803d; background: #f0fdf4; }
+    .studentRow.onboarded small { color: #15803d; }
+    .studentRow.outBoarded { color: #b91c1c; background: #fff1f2; }
+    .studentRow.outBoarded small { color: #b91c1c; }
+    .studentRow:first-child { margin-top: 8px; }
+    .addStudent { display: flex; gap: 6px; margin-top: 8px; }
+    .addStudent input { padding: 6px 8px; }
+    #onList .grp { margin-top: 10px; }
+    #onList .grp > b { display: block; }
+    #onList .studentRow small { color: var(--muted); text-align: right; }
+    .btns { display: flex; gap: 6px; flex-shrink: 0; }
+    button.warn { background: #b91c1c; }
+    details { border: 1px solid var(--line); border-radius: 8px; background: #fff; padding: 10px 12px; }
+    summary { cursor: pointer; font-weight: 600; }
+    .form { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
+    .form select { padding: 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: #fff; }
+    #stopList { max-height: 220px; overflow-y: auto; }
+    #stopList li { padding: 8px 10px; }
+    dialog { border: 0; border-radius: 12px; padding: 22px; max-width: 360px; box-shadow: 0 10px 40px rgba(0,0,0,.35); }
+    dialog::backdrop { background: rgba(0,0,0,.45); }
+    dialog h2 { margin: 0 0 8px; font-size: 1.1rem; color: #b91c1c; }
+    dialog p { margin: 0 0 16px; line-height: 1.5; }
+    #toasts { position: fixed; top: 16px; right: 16px; z-index: 2000; display: flex; flex-direction: column; gap: 8px; max-width: 320px; }
+    .toast { padding: 12px 14px; border-radius: 8px; background: var(--ink); color: #fff; font-size: .9rem; line-height: 1.4; box-shadow: 0 4px 14px rgba(0,0,0,.25); }
+    .toast.alert { background: var(--live); }
+    @media (max-width: 720px) {
+      body { flex-direction: column-reverse; }
+      aside { width: 100%; max-height: 50%; border-right: 0; border-top: 1px solid var(--line); }
+    }
+  </style>
+</head>
+<body>
+  <aside>
+    <h1>Device Tracker</h1>
+    <p class="hint">Open this page on your phone and press Share to appear on the map. Use the filter to follow one bus.</p>
+
+    <div>
+      <button id="schoolBtn" style="width:100%">Send buses to school</button>
+      <p class="hint" id="schoolState" style="margin-top:6px"></p>
+    </div>
+
+    <div>
+      <label for="filter">Filter by ID</label>
+      <div class="row">
+        <input id="filter" list="ids" placeholder="e.g. bus-1" autocomplete="off" />
+        <button id="apply">Apply</button>
+        <button id="clear" class="ghost">Show all</button>
+      </div>
+      <datalist id="ids"></datalist>
+    </div>
+
+    <div>
+      <label for="name">Your device name</label>
+      <input id="name" value="My phone" maxlength="24" />
+    </div>
+    <button id="toggle">Share my location</button>
+    <div id="status" role="status"></div>
+    <details open>
+      <summary>On board now (<span id="onTotal">0</span>)</summary>
+      <p class="hint" id="onState" style="margin:8px 0 0">Waiting for data…</p>
+      <div id="onList"></div>
+    </details>
+    <details>
+      <summary>Bus stops (<span id="stopCount">0</span>)</summary>
+      <div class="form">
+        <input id="stopName" placeholder="New stop name" maxlength="40" />
+        <div class="row">
+          <input id="stopLat" placeholder="Latitude" inputmode="decimal" />
+          <input id="stopLng" placeholder="Longitude" inputmode="decimal" />
+        </div>
+        <select id="stopRoute" aria-label="Route"></select>
+        <input id="stopStudents" placeholder="Students (names, comma separated)" />
+        <button id="addStop">Add stop</button>
+        <p class="hint">Click the map to fill the coordinates.</p>
+      </div>
+      <ul id="stopList"></ul>
+    </details>
+    <ul id="list"></ul>
+  </aside>
+  <div id="map"></div>
+  <div id="toasts" aria-live="polite"></div>
+  <dialog id="dlg">
+    <h2 id="dlgTitle"></h2>
+    <p id="dlgMsg"></p>
+    <div class="row">
+      <button id="dlgShow">Show on map</button>
+      <button id="dlgClose" class="ghost">Dismiss</button>
+    </div>
+  </dialog>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    const map = L.map("map").setView([22.72, 75.86], 5);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19, attribution: "&copy; OpenStreetMap contributors",
+    }).addTo(map);
+    const stopLayer = L.layerGroup().addTo(map);
+
+    const TRAFFIC_COLORS = ["#16a34a", "#f59e0b", "#dc2626"];
+    const TRAFFIC_LABELS = ["Light traffic", "Moderate traffic", "Heavy traffic"];
+    let routeLines = [], trafficLevels = [];
+
+    const legend = L.control({ position: "bottomright" });
+    legend.onAdd = () => {
+      const el = L.DomUtil.create("div");
+      el.style.cssText = "background:#fff;padding:8px 10px;border-radius:8px;font-size:.8rem;line-height:1.6;box-shadow:0 1px 4px rgba(0,0,0,.3)";
+      el.innerHTML = TRAFFIC_LABELS.map((t, i) => `<div><span style="display:inline-block;width:18px;height:5px;border-radius:3px;background:${TRAFFIC_COLORS[i]};margin-right:6px;vertical-align:middle"></span>${t}</div>`).join("");
+      return el;
+    };
+    legend.addTo(map);
+
+    let routeNames = [];
+    function applyTraffic() {
+      routeLines.forEach((lines, r) => lines.forEach((line, i) => {
+        const lv = (trafficLevels[r] || [])[i] || 0;
+        line.setStyle({ color: TRAFFIC_COLORS[lv] });
+        line.setTooltipContent(`${routeNames[r]}: ${TRAFFIC_LABELS[lv]}`);
+      }));
+    }
+
+    const markers = {}, info = {};
+    let onboard = null;
+    let filter = "";
+    let watchId = null, firstFix = true, fitted = false;
+    const list = document.getElementById("list");
+    const statusEl = document.getElementById("status");
+    const toggle = document.getElementById("toggle");
+    const filterInput = document.getElementById("filter");
+
+    const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+    const matches = (d) => !filter || d.id.toLowerCase() === filter || d.name.toLowerCase() === filter;
+
+    function makeIcon(d) {
+      if (d.isBus) return L.divIcon({ className: "", html: `<div class="bus ${d.stopped ? "halted" : d.mode !== "route" ? "off" : ""}" style="border-color:${d.color}">🚌</div>`, iconSize: [30, 30] });
+      const me = d.id === socket.id;
+      return L.divIcon({ className: "", html: `<div class="dot ${me ? "me" : ""}"></div>`, iconSize: [18, 18] });
+    }
+
+    function person(role, x) {
+      if (!x) return "";
+      const tel = String(x.phone).replace(/[^\d+]/g, "");
+      return `<div style="margin-top:6px"><b>${role}</b><br>${escapeHtml(x.name)}<br><a href="tel:${escapeHtml(tel)}">${escapeHtml(x.phone)}</a></div>`;
+    }
+
+    function render(d) {
+      info[d.id] = d;
+      if (!markers[d.id]) markers[d.id] = L.marker([d.latitude, d.longitude], { icon: makeIcon(d) });
+      markers[d.id].setLatLng([d.latitude, d.longitude]).setIcon(makeIcon(d));
+      markers[d.id].bindPopup(
+        `<b>${escapeHtml(d.name)}</b><br>${escapeHtml(d.id)}${d.routeName ? " · " + escapeHtml(d.routeName) : ""}` +
+        `${d.status ? "<br>" + escapeHtml(d.status) : ""}` +
+        (d.isBus && onboard && onboard.buses[d.id] ? `<br>On board: <b>${onboard.buses[d.id].students.length}</b>` : "") +
+        (d.isBus ? `<hr style="border:0;border-top:1px solid #ddd;margin:8px 0 2px">${person("Driver", d.driver)}${person("Conductor", d.conductor)}` : ""),
+        { minWidth: 170 });
+      if (matches(d)) markers[d.id].addTo(map); else map.removeLayer(markers[d.id]);
+      drawList();
+      updateIds();
+    }
+
+    function remove(id) {
+      if (markers[id]) { map.removeLayer(markers[id]); delete markers[id]; }
+      delete info[id];
+      drawList(); updateIds();
+    }
+
+    function updateIds() {
+      document.getElementById("ids").innerHTML = Object.values(info).filter((d) => d.isBus)
+        .map((d) => `<option value="${escapeHtml(d.id)}">${escapeHtml(d.name)}</option>`).join("");
+    }
+
+    function drawList() {
+      list.innerHTML = "";
+      const items = Object.values(info).filter(matches);
+      if (!items.length) {
+        list.innerHTML = `<li style="cursor:default">${filter ? "No device with ID “" + escapeHtml(filter) + "”." : "No devices sharing yet."}</li>`;
+        return;
+      }
+      items.forEach((d) => {
+        const li = document.createElement("li");
+        li.className = (d.id === socket.id ? "me " : "") + (d.stopped ? "halted" : "");
+        const detail = d.isBus ? `${escapeHtml(d.id)} · ${escapeHtml(d.routeName)}<br>${escapeHtml(d.status)}`
+          : d.latitude.toFixed(5) + ", " + d.longitude.toFixed(5) + (d.accuracy ? " · ±" + Math.round(d.accuracy) + " m" : "");
+        li.innerHTML = `<div><b>${escapeHtml(d.name)}${d.id === socket.id ? " (this device)" : ""}</b><small>${detail}</small></div>`;
+        if (d.isBus) {
+          const box = document.createElement("div");
+          box.className = "btns";
+          const mk = (text, cls, evt) => {
+            const b = document.createElement("button");
+            b.textContent = text; b.className = cls;
+            b.onclick = (e) => { e.stopPropagation(); socket.emit(evt, d.id); };
+            box.appendChild(b);
+          };
+          mk(d.stopped ? "Resume" : "Stop", d.stopped ? "" : "stop", d.stopped ? "resume-bus" : "stop-bus");
+          if (d.mode === "route") mk("Deviate", "warn", "deviate-bus");
+          else if (d.mode === "deviating") mk("Return", "ghost", "return-bus");
+          li.appendChild(box);
+        }
+        li.onclick = () => { map.setView([d.latitude, d.longitude], 16); markers[d.id].openPopup(); };
+        list.appendChild(li);
+      });
+    }
+
+    function applyFilter() {
+      filter = filterInput.value.trim().toLowerCase();
+      Object.values(info).forEach((d) => { if (matches(d)) markers[d.id].addTo(map); else map.removeLayer(markers[d.id]); });
+      drawList();
+      const hit = Object.values(info).filter(matches);
+      if (filter && hit.length === 1) map.setView([hit[0].latitude, hit[0].longitude], 15);
+    }
+    document.getElementById("apply").onclick = applyFilter;
+    filterInput.addEventListener("keydown", (e) => { if (e.key === "Enter") applyFilter(); });
+    document.getElementById("clear").onclick = () => { filterInput.value = ""; applyFilter(); };
+
+    function toast(msg, alertStyle, ms = 8000) {
+      const el = document.createElement("div");
+      el.className = "toast" + (alertStyle ? " alert" : "");
+      el.textContent = msg;
+      document.getElementById("toasts").appendChild(el);
+      setTimeout(() => el.remove(), ms);
+    }
+
+    socket.on("routes", ({ routes, unassigned, school }) => {
+      stopLayer.clearLayers();
+      routeNames = routes.map((r) => r.name);
+      const all = [];
+      routeLines = routes.map((r) => {
+        const pts = r.stops.map((p) => [p.latitude, p.longitude]);
+        all.push(...pts);
+        return pts.slice(1).map((p, i) => L.polyline([pts[i], p], { color: TRAFFIC_COLORS[0], weight: 6, opacity: 0.85 })
+          .addTo(stopLayer).bindTooltip("", { sticky: true }));
+      });
+      const ring = (p, color, label) => {
+        const n = p.students.length;
+        return L.marker([p.latitude, p.longitude], {
+          icon: L.divIcon({ className: "", html: `<div class="stopbadge" style="border-color:${color}">${n}</div>`, iconSize: [28, 28] }),
+          zIndexOffset: -100,
+        }).addTo(stopLayer).bindTooltip(`${label}: ${n} student${n === 1 ? "" : "s"}`, { direction: "top", offset: [0, -14] });
+      };
+      routes.forEach((r) => r.stops.filter((p) => p.id !== "school").forEach((p) => ring(p, r.color, `${p.name} (${r.name})`)));
+      unassigned.forEach((p) => { all.push([p.latitude, p.longitude]); ring(p, "#94a3b8", `${p.name} (no route)`); });
+      L.marker([school.latitude, school.longitude], {
+        icon: L.divIcon({ className: "", html: '<div class="school">🏫</div>', iconSize: [40, 40] }),
+        zIndexOffset: 1000,
+      }).addTo(stopLayer).bindTooltip("School: start and end point of every route", { direction: "top", offset: [0, -20] });
+      applyTraffic();
+      drawStopManager(routes, unassigned);
+      if (!fitted && all.length) { map.fitBounds(all, { padding: [40, 40] }); fitted = true; }
+    });
+    socket.on("traffic", (t) => { trafficLevels = t; applyTraffic(); });
+    socket.on("all-devices", (all) => all.forEach(render));
+    socket.on("receive-location", render);
+    socket.on("device-left", remove);
+
+    socket.on("student-notice", (n) => {
+      toast(`${n.student} is not coming today (${n.stop}).` + (n.stopRemoved ? ` No students left, so ${n.stop} was removed.` : "") + (n.note ? " " + n.note : ""), true, 12000);
+    });
+    socket.on("stop-notice", (n) => {
+      toast(`${n.name} was removed${n.students ? ` along with its ${n.students} student${n.students === 1 ? "" : "s"}` : ""}.`, false, 10000);
+    });
+    socket.on("bus-alert", (a) => {
+      if (a.type === "deviation") return showModal(
+        `${a.name} is off its route`,
+        `${a.name} (${a.busId}) has moved more than ${a.km} km away from its route and has not returned.`, a.busId);
+      if (a.type === "left-route") return toast(`${a.name} left its route.`);
+      if (a.type === "back") return toast(`${a.name} is back on its route.`);
+      if (a.type === "overdue") return toast(`ALERT: ${a.name} (${a.busId}) has been stopped for more than ${a.minutes} minutes.`, true, 20000);
+      if (a.type === "resumed") return toast(`${a.name} is moving again.`);
+      toast(`ALERT: ${a.name} (${a.busId}) was stopped.`, true);
+    });
+
+    const dlg = document.getElementById("dlg");
+    let dlgBus = null;
+    function showModal(title, msg, busId) {
+      dlgBus = busId;
+      document.getElementById("dlgTitle").textContent = title;
+      document.getElementById("dlgMsg").textContent = msg;
+      if (!dlg.open) dlg.showModal();
+    }
+    document.getElementById("dlgClose").onclick = () => dlg.close();
+    document.getElementById("dlgShow").onclick = () => {
+      const d = info[dlgBus];
+      if (d) { map.setView([d.latitude, d.longitude], 14); markers[d.id].openPopup(); }
+      dlg.close();
+    };
+
+    // ---------- Bus stop manager (uses the REST API) ----------
+    const routeSel = document.getElementById("stopRoute");
+    let pick = null;
+
+    async function api(method, url, body) {
+      const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      return data;
+    }
+
+    const openStops = new Set();
+    function drawStopManager(routes, unassigned) {
+      const keep = routeSel.value;
+      routeSel.innerHTML = '<option value="">No route</option>' + routes.map((r) => `<option value="${r.id}">${escapeHtml(r.name)}</option>`).join("");
+      routeSel.value = keep;
+      const rows = [];
+      routes.forEach((r) => r.stops.filter((p) => p.id !== "school").forEach((p) => rows.push({ ...p, route: r.name })));
+      unassigned.forEach((p) => rows.push({ ...p, route: "No route" }));
+      document.getElementById("stopCount").textContent = rows.length;
+      const ul = document.getElementById("stopList");
+      ul.innerHTML = "";
+      rows.forEach((p) => {
+        const n = p.students.length;
+        const li = document.createElement("li");
+        li.style.cssText = "display:block;cursor:default";
+        const head = document.createElement("div");
+        head.className = "stophead";
+        head.innerHTML = `<div><b>${escapeHtml(p.name)}</b><small>${escapeHtml(p.route)} · ${n} student${n === 1 ? "" : "s"}</small></div>`;
+        const rm = document.createElement("button");
+        rm.textContent = "Remove"; rm.className = "warn";
+        rm.onclick = async (e) => {
+          e.stopPropagation();
+          try { await api("DELETE", "/api/stops/" + p.id); }
+          catch (err) { toast("Could not remove: " + err.message, true); }
+        };
+        head.appendChild(rm);
+
+        const body = document.createElement("div");
+        body.style.display = openStops.has(p.id) ? "block" : "none";
+        p.students.forEach((name) => {
+          const row = document.createElement("div");
+          row.className = "studentRow";
+          row.innerHTML = `<span>${escapeHtml(name)}</span>`;
+          const b = document.createElement("button");
+          b.textContent = "Not coming"; b.className = "ghost";
+          b.onclick = async () => {
+            try { await api("DELETE", `/api/stops/${p.id}/students/${encodeURIComponent(name)}`); }
+            catch (err) { toast("Could not update: " + err.message, true); }
+          };
+          row.appendChild(b);
+          body.appendChild(row);
+        });
+        const add = document.createElement("div");
+        add.className = "addStudent";
+        add.innerHTML = '<input placeholder="Add student name" maxlength="30" /><button>Add</button>';
+        add.querySelector("button").onclick = async () => {
+          const input = add.querySelector("input");
+          if (!input.value.trim()) return;
+          try { await api("POST", `/api/stops/${p.id}/students`, { name: input.value.trim() }); }
+          catch (err) { toast("Could not add: " + err.message, true); }
+        };
+        body.appendChild(add);
+
+        head.onclick = () => {
+          map.setView([p.latitude, p.longitude], 16);
+          const open = body.style.display === "none";
+          body.style.display = open ? "block" : "none";
+          open ? openStops.add(p.id) : openStops.delete(p.id);
+        };
+        li.append(head, body);
+        ul.appendChild(li);
+      });
+    }
+
+    map.on("click", (e) => {
+      document.getElementById("stopLat").value = e.latlng.lat.toFixed(5);
+      document.getElementById("stopLng").value = e.latlng.lng.toFixed(5);
+      if (pick) map.removeLayer(pick);
+      pick = L.marker(e.latlng).addTo(map).bindTooltip("New stop here");
+    });
+
+    document.getElementById("addStop").onclick = async () => {
+      const name = document.getElementById("stopName").value.trim();
+      const latitude = parseFloat(document.getElementById("stopLat").value);
+      const longitude = parseFloat(document.getElementById("stopLng").value);
+      if (!name || isNaN(latitude) || isNaN(longitude)) return toast("Enter a name and click the map (or type the coordinates).", true);
+      try {
+        const students = document.getElementById("stopStudents").value.split(",").map((n) => n.trim()).filter(Boolean);
+        await api("POST", "/api/stops", { name, latitude, longitude, routeId: routeSel.value || undefined, students });
+        toast(`Added ${name} with ${students.length} student${students.length === 1 ? "" : "s"}.`);
+        document.getElementById("stopName").value = "";
+        document.getElementById("stopStudents").value = "";
+        if (pick) { map.removeLayer(pick); pick = null; }
+      } catch (err) { toast("Could not add: " + err.message, true); }
+    };
+
+    // ---------- Students on board (from MySQL) ----------
+    function drawOnboard() {
+      if (!onboard) return;
+      document.getElementById("onTotal").textContent = onboard.total;
+      const st = document.getElementById("onState");
+      st.textContent = !onboard.connected ? onboard.error
+        : onboard.namesOk === false ? (onboard.namesNote || "Student names not found.") + " Showing IDs."
+        : "Live from MySQL.";
+      st.style.color = onboard.connected && onboard.namesOk !== false ? "" : "#b91c1c";
+      const list = document.getElementById("onList");
+      list.innerHTML = "";
+      const groups = Object.entries(onboard.buses).map(([id, g]) => ({ title: id.replace("bus-", "Bus "), students: g.students }))
+        .concat(onboard.others.map((o) => ({ title: `Bus no. ${o.busNo} (not on map)`, students: o.students })));
+      groups.forEach((g) => {
+        const box = document.createElement("div");
+        box.className = "grp";
+        const activeCount = g.students.filter((s) => !s.outBoarded).length;
+        const outCount = g.students.length - activeCount;
+        box.innerHTML = `<b>${escapeHtml(g.title)} · ${activeCount} on board${outCount ? ` · ${outCount} outBoarded` : ""}</b>` + (g.students.length ? "" : '<small style="color:var(--muted)">Nobody on board.</small>');
+        g.students.forEach((s) => {
+          const time = s.since ? new Date(s.since).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+          const row = document.createElement("div");
+          row.className = s.outBoarded ? "studentRow outBoarded" : "studentRow onboarded";
+          row.innerHTML = `<span>${escapeHtml(s.name)}</span><small>${s.outBoarded ? "outBoarded · " : "onboarded · "}#${escapeHtml(s.id)}${s.stop ? " · " + escapeHtml(s.stop) : ""}${time ? " · " + time : ""}</small>`;
+          box.appendChild(row);
+        });
+        list.appendChild(box);
+      });
+    }
+    socket.on("onboard", (o) => { onboard = o; drawOnboard(); });
+
+    // ---------- School button ----------
+    const schoolBtn = document.getElementById("schoolBtn");
+    let schoolMode = null;
+    function paintSchool() {
+      const on = !!schoolMode;
+      schoolBtn.textContent = on ? "Send buses away from school" : "Send buses to school";
+      schoolBtn.className = on ? "stop" : "";
+      document.getElementById("schoolState").textContent = on
+        ? "Buses are driving to the school and will wait there."
+        : "Buses are driving away from the school to the last stop of their route.";
+    }
+    socket.on("school-mode", (on) => {
+      const changed = schoolMode !== null && schoolMode !== on;
+      schoolMode = on; paintSchool();
+      if (changed) toast(on ? "Buses are heading to the school." : "Buses are leaving the school.");
+    });
+    schoolBtn.onclick = () => socket.emit("set-school-mode", !schoolMode);
+    paintSchool();
+
+    drawList();
+
+    toggle.addEventListener("click", () => {
+      if (watchId !== null) return stopSharing();
+      if (!("geolocation" in navigator)) { statusEl.textContent = "This browser has no location support."; return; }
+      if (!window.isSecureContext) { statusEl.textContent = "Location needs HTTPS. Use localhost or an HTTPS tunnel."; return; }
+      statusEl.textContent = "Waiting for GPS…";
+      watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          const { latitude, longitude, accuracy } = pos.coords;
+          socket.emit("send-location", { latitude, longitude, accuracy, name: document.getElementById("name").value.trim() });
+          statusEl.textContent = "Sharing your location. Keep this tab open and the screen on.";
+          if (firstFix) { map.setView([latitude, longitude], 16); firstFix = false; }
+        },
+        (err) => {
+          statusEl.textContent = err.code === 1 ? "Location permission was denied. Allow it in your browser settings." : "Could not get location: " + err.message;
+          stopSharing(true);
+        },
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+      );
+      toggle.textContent = "Stop sharing";
+      toggle.classList.add("stop");
+    });
+
+    function stopSharing(keepMessage) {
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+      watchId = null; firstFix = true;
+      toggle.textContent = "Share my location";
+      toggle.classList.remove("stop");
+      if (!keepMessage) statusEl.textContent = "Stopped sharing.";
+      socket.disconnect().connect();
+    }
+  </script>
+</body>
+</html>
