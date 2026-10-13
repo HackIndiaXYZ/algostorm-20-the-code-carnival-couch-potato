@@ -161,7 +161,7 @@
         `<b>${escapeHtml(d.name)}</b><br>${escapeHtml(d.id)}${d.routeName ? " · " + escapeHtml(d.routeName) : ""}` +
         `${d.status ? "<br>" + escapeHtml(d.status) : ""}` +
         (d.isBus && onboard && onboard.buses[d.id] ? `<br>On board: <b>${onboard.buses[d.id].students.length}</b>` : "") +
-        (d.isBus ? `<hr style="border:0;border-top:1px solid #ddd;margin:8px 0 2px">${person("Driver", d.driver)}${person("Conductor", d.conductor)}` : ""),
+        (d.isBus ? `<hr style="border:0;border-top:1px solid #ddd;margin:8px 0 2px"><b>Students</b><br>IN: ${d.passengerIn} · OUT: ${d.passengerOut}${person("Driver", d.driver)}${person("Conductor", d.conductor)}` : ""),
         { minWidth: 170 });
       if (matches(d)) markers[d.id].addTo(map); else map.removeLayer(markers[d.id]);
       drawList();
@@ -248,6 +248,7 @@
       if (a.type === "left-route") return toast(`${a.name} left its route.`);
       if (a.type === "back") return toast(`${a.name} is back on its route.`);
       if (a.type === "overdue") return toast(`ALERT: ${a.name} (${a.busId}) has been stopped for more than ${a.minutes} minutes.`, true, 20000);
+      if (a.type === "out-count") return toast(`ALERT: ${a.count} student${a.count === 1 ? "" : "s"} gone OUT`, true, 12000);
       if (a.type === "resumed") return toast(`${a.name} is moving again.`);
       toast(`ALERT: ${a.name} (${a.busId}) was stopped.`, true);
     });

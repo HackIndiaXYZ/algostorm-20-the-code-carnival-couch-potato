@@ -57,7 +57,7 @@
     dialog { border: 0; border-radius: 12px; padding: 22px; max-width: 360px; box-shadow: 0 10px 40px rgba(0,0,0,.35); }
     dialog::backdrop { background: rgba(0,0,0,.45); }
     dialog h2 { margin: 0 0 8px; font-size: 1.1rem; color: #b91c1c; }
-    dialog p { margin: 0 0 16px; line-height: 1.5; }
+    dialog p { margin: 0 0 16px; line-height: 1.5; white-space: pre-line; }
     #toasts { position: fixed; top: 16px; right: 16px; z-index: 2000; display: flex; flex-direction: column; gap: 8px; max-width: 320px; }
     .toast { padding: 12px 14px; border-radius: 8px; background: var(--ink); color: #fff; font-size: .9rem; line-height: 1.4; box-shadow: 0 4px 14px rgba(0,0,0,.25); }
     .toast.alert { background: var(--live); }
@@ -150,6 +150,7 @@
     legend.addTo(map);
 
     let routeNames = [];
+    let routeData = [];
     function applyTraffic() {
       routeLines.forEach((lines, r) => lines.forEach((line, i) => {
         const lv = (trafficLevels[r] || [])[i] || 0;
@@ -160,6 +161,7 @@
 
     const markers = {}, info = {};
     let onboard = null;
+    const lastOutCount = {};
     let filter = "";
     let watchId = null, firstFix = true, fitted = false;
     const list = document.getElementById("list");
@@ -182,16 +184,41 @@
       return `<div style="margin-top:6px"><b>${role}</b><br>${escapeHtml(x.name)}<br><a href="tel:${escapeHtml(tel)}">${escapeHtml(x.phone)}</a></div>`;
     }
 
+    function busStudentCounts(d) {
+      const route = d.routeName
+        ? routeData.find((r) => r.name === d.routeName)
+        : null;
+      if (!route) return { inCount: 0, outCount: 0 };
+      const firstStop = Math.max(1, d.stopIndex);
+      const inCount = route.stops[firstStop]?.students.length || 0;
+      const outCount = d.direction > 0 ? Math.max(0, firstStop - 1) : 0;
+      return { inCount, outCount };
+    }
+
+    function showBusStopNotice(d, counts) {
+      if (!d.isBus || d.stopIndex < 1 || !d.stopName || d.status.indexOf("At ") !== 0) return;
+      const previousOut = lastOutCount[d.id];
+      lastOutCount[d.id] = counts.outCount;
+      if (previousOut === undefined || counts.outCount <= previousOut) return;
+      showModal(
+        `${d.name} reached ${d.stopName}`,
+        `IN : ${counts.inCount}\nOUT : ${counts.outCount}`,
+        d.id
+      );
+    }
+
     function render(d) {
       info[d.id] = d;
       if (!markers[d.id]) markers[d.id] = L.marker([d.latitude, d.longitude], { icon: makeIcon(d) });
       markers[d.id].setLatLng([d.latitude, d.longitude]).setIcon(makeIcon(d));
+      const counts = d.isBus ? busStudentCounts(d) : null;
       markers[d.id].bindPopup(
         `<b>${escapeHtml(d.name)}</b><br>${escapeHtml(d.id)}${d.routeName ? " · " + escapeHtml(d.routeName) : ""}` +
         `${d.status ? "<br>" + escapeHtml(d.status) : ""}` +
         (d.isBus && onboard && onboard.buses[d.id] ? `<br>On board: <b>${onboard.buses[d.id].students.length}</b>` : "") +
-        (d.isBus ? `<hr style="border:0;border-top:1px solid #ddd;margin:8px 0 2px">${person("Driver", d.driver)}${person("Conductor", d.conductor)}` : ""),
+        (d.isBus ? `<hr style="border:0;border-top:1px solid #ddd;margin:8px 0 2px"><b>IN : ${counts.inCount}</b><br><b>OUT : ${counts.outCount}</b>${person("Driver", d.driver)}${person("Conductor", d.conductor)}` : ""),
         { minWidth: 170 });
+      if (d.isBus) showBusStopNotice(d, counts);
       if (matches(d)) markers[d.id].addTo(map); else map.removeLayer(markers[d.id]);
       drawList();
       updateIds();
@@ -279,6 +306,8 @@
 
     socket.on("routes", ({ routes, unassigned, school }) => {
       stopLayer.clearLayers();
+      routeData = routes;
+      Object.values(info).filter((d) => d.isBus).forEach(render);
       routeNames = routes.map((r) => r.name);
       const all = [];
       routeLines = routes.map((r) => {

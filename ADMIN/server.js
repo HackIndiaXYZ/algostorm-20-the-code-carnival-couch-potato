@@ -215,6 +215,7 @@ function snapshot(bus) {
     id: bus.id, name: bus.name, isBus: true,
     driver: BUS_CREW[bus.route]?.driver, conductor: BUS_CREW[bus.route]?.conductor,
     routeName: route.name, color: route.color, mode: bus.mode,
+    direction: bus.dir, stopIndex: atStop, stopName: atStop >= 0 ? route.stops[atStop].name : null,
     latitude: bus.lat + wobble(), longitude: bus.lon + wobble(),
     stopped: bus.stopped, stoppedAt: bus.stopped ? bus.stoppedAt : null,
     status, time: Date.now(),

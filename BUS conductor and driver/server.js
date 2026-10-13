@@ -119,6 +119,7 @@ const buses = ROUTES.map((route, i) => {
     s, dir: 1, dwell: i * 4, mode: "route", // staggered departures
     lat: p.latitude, lon: p.longitude, heading: 0, devKm: 0, devLevel: 0,
     stopped: false, stoppedAt: 0, alerted: false,
+    passengerIn: 0, passengerOut: 0, lastPassengerStop: -1,
   };
 });
 
@@ -197,6 +198,7 @@ function snapshot(bus) {
   return {
     id: bus.id, name: bus.name, isBus: true,
     driver: BUS_CREW[bus.route]?.driver, conductor: BUS_CREW[bus.route]?.conductor,
+    passengerIn: bus.passengerIn, passengerOut: bus.passengerOut, passengerCapacity: 5,
     routeName: route.name, color: route.color, mode: bus.mode,
     latitude: bus.lat + wobble(), longitude: bus.lon + wobble(),
     stopped: bus.stopped, stoppedAt: bus.stopped ? bus.stoppedAt : null,
@@ -204,7 +206,28 @@ function snapshot(bus) {
   };
 }
 
+function updatePassengerCounts(bus) {
+  const route = ROUTES[bus.route];
+  const stopIndex = route.cum.findIndex((d) => Math.abs(d - bus.s) < 1);
+  if (stopIndex <= 0 || stopIndex === bus.lastPassengerStop) return;
+
+  bus.lastPassengerStop = stopIndex;
+  bus.passengerIn = Math.min(STUDENT_COUNTS[stopIndex - 1] || 0, 5);
+  const previousOut = bus.passengerOut;
+  bus.passengerOut = Math.min(stopIndex - 1, 5);
+  if (bus.passengerOut > previousOut) {
+    io.emit("bus-alert", {
+      type: "out-count",
+      busId: bus.id,
+      name: bus.name,
+      count: bus.passengerOut,
+      capacity: 5,
+    });
+  }
+}
+
 function publish(bus) {
+  updatePassengerCounts(bus);
   devices[bus.id] = snapshot(bus);
   io.emit("receive-location", devices[bus.id]);
 }
